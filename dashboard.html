@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard | Motoris</title>
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="content">
+        <h1>Dashboard</h1>
+        <p class="error" id="error" hidden></p>
+        <div class="stats" id="stats"></div>
+      </main>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+      (async function () {
+        var user = requireAuth();
+        if (!user) return;
+        renderSidebar(user, 'dashboard.html');
+
+        // Placeholder: counts come from /vehicles for now.
+        // Later, replace with a dedicated reports/dashboard endpoint.
+        try {
+          var vehicles = await api('/vehicles');
+          var count = function (s) { return vehicles.filter(function (v) { return v.status === s; }).length; };
+          var stats = [
+            { label: 'Total vehicles', value: vehicles.length },
+            { label: 'Active', value: count('active') },
+            { label: 'Under maintenance', value: count('under_maintenance') },
+            { label: 'Unavailable', value: count('unavailable') },
+          ];
+          document.getElementById('stats').innerHTML = stats
+            .map(function (s) {
+              return '<div class="card stat"><div class="stat-value">' + s.value + '</div><div class="muted">' + s.label + '</div></div>';
+            })
+            .join('');
+        } catch (err) {
+          var box = document.getElementById('error');
+          box.textContent = err.message;
+          box.hidden = false;
+        }
+      })();
+    </script>
+  </body>
+</html>
