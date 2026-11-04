@@ -5,45 +5,251 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard | Motoris</title>
     <link rel="stylesheet" href="css/styles.css" />
+    <style>
+      .dash-head { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+      .dash-head h1 { margin: 0 0 4px; }
+      .dash-meta { display: flex; align-items: center; gap: 12px; color: #6b7785; font-size: .9rem; }
+
+      .section-label { margin: 24px 0 10px; font-size: .8rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6b7785; }
+      .stat { border-left: 4px solid #cbd2d9; }
+      .stat-blue { border-left-color: #2563eb; }
+      .stat-green { border-left-color: #16a34a; }
+      .stat-amber { border-left-color: #f59e0b; }
+      .stat-red { border-left-color: #dc2626; }
+      .stat-label { font-weight: 600; margin-top: 2px; }
+      .stat-note { color: #6b7785; font-size: .82rem; margin-top: 4px; }
+
+      .panels { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; margin-top: 16px; }
+      .panels-even { grid-template-columns: 1fr 1fr; }
+      .panel { padding: 18px; min-width: 0; }
+      .panel h3 { margin: 0 0 14px; font-size: 1rem; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+      .panel .count { background: #eef1f5; color: #52606d; font-size: .78rem; padding: 2px 9px; border-radius: 999px; font-weight: 600; }
+      .empty { color: #6b7785; padding: 18px 0; text-align: center; }
+
+      .chart { display: flex; align-items: flex-end; gap: 14px; height: 190px; padding-top: 10px; }
+      .chart-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+      .bars { display: flex; align-items: flex-end; justify-content: center; gap: 4px; width: 100%; }
+      .bar { width: 40%; max-width: 28px; min-height: 2px; border-radius: 4px 4px 0 0; }
+      .bar-fuel { background: #2563eb; }
+      .bar-maint { background: #f59e0b; }
+      .chart-label { margin-top: 8px; font-size: .78rem; color: #6b7785; }
+      .legend { display: flex; gap: 16px; font-size: .82rem; color: #52606d; margin-bottom: 4px; }
+      .legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+      .legend .l-fuel::before { background: #2563eb; }
+      .legend .l-maint::before { background: #f59e0b; }
+
+      .fault-list { list-style: none; margin: 0; padding: 0; }
+      .fault-list li { padding: 11px 0; border-top: 1px solid #eef1f5; }
+      .fault-list li:first-child { border-top: 0; padding-top: 0; }
+      .fault-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+      .fault-meta { color: #6b7785; font-size: .84rem; margin-top: 3px; }
+
+      .panel table th, .panel table td { padding: 10px 8px; }
+
+      @media (max-width: 900px) {
+        .panels, .panels-even { grid-template-columns: 1fr; }
+      }
+    </style>
   </head>
   <body>
     <div class="shell">
       <aside class="sidebar" id="sidebar"></aside>
+
       <main class="content">
-        <h1>Dashboard</h1>
+        <div class="dash-head">
+          <div>
+            <h1>Dashboard</h1>
+            <div class="muted" id="subtitle"></div>
+          </div>
+          <div class="dash-meta">
+            <span id="updated"></span>
+            <button class="btn btn-light" id="refresh-btn">Refresh</button>
+          </div>
+        </div>
+
         <p class="error" id="error" hidden></p>
-        <div class="stats" id="stats"></div>
+        <div class="card panel" id="no-access" hidden>
+          <h3>Welcome</h3>
+          <p class="muted">The fleet dashboard is for administrators, managers, finance officers and mechanics. Drivers can use the pages in the menu.</p>
+        </div>
+
+        <div id="dashboard">
+          <div class="section-label">Fleet</div>
+          <div class="stats" id="stats-fleet"></div>
+
+          <div class="section-label">This month</div>
+          <div class="stats" id="stats-month"></div>
+
+          <div class="panels">
+            <div class="card panel">
+              <h3>Fuel and maintenance spending <span class="muted" style="font-weight:400;font-size:.82rem">last 6 months</span></h3>
+              <div class="legend"><span class="l-fuel">Fuel</span><span class="l-maint">Maintenance</span></div>
+              <div class="chart" id="chart"></div>
+            </div>
+            <div class="card panel">
+              <h3>Pending faults <span class="count" id="fault-count">0</span></h3>
+              <ul class="fault-list" id="faults"></ul>
+            </div>
+          </div>
+
+          <div class="panels panels-even">
+            <div class="card panel">
+              <h3>Documents expiring <span class="count" id="doc-count">0</span></h3>
+              <div class="table-wrap" id="docs"></div>
+            </div>
+            <div class="card panel">
+              <h3>Services due <span class="count" id="svc-count">0</span></h3>
+              <div class="table-wrap" id="services"></div>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
 
     <script src="js/config.js"></script>
     <script src="js/app.js"></script>
     <script>
-      (async function () {
+      (function () {
         var user = requireAuth();
         if (!user) return;
         renderSidebar(user, 'dashboard.html');
 
-        // Placeholder: counts come from /vehicles for now.
-        // Later, replace with a dedicated reports/dashboard endpoint.
-        try {
-          var vehicles = await api('/vehicles');
-          var count = function (s) { return vehicles.filter(function (v) { return v.status === s; }).length; };
-          var stats = [
-            { label: 'Total vehicles', value: vehicles.length },
-            { label: 'Active', value: count('active') },
-            { label: 'Under maintenance', value: count('under_maintenance') },
-            { label: 'Unavailable', value: count('unavailable') },
-          ];
-          document.getElementById('stats').innerHTML = stats
-            .map(function (s) {
-              return '<div class="card stat"><div class="stat-value">' + s.value + '</div><div class="muted">' + s.label + '</div></div>';
-            })
-            .join('');
-        } catch (err) {
-          var box = document.getElementById('error');
-          box.textContent = err.message;
+        var CURRENCY = 'KES'; // change to your currency code if needed
+
+        function $(id) { return document.getElementById(id); }
+
+        function money(n) {
+          try {
+            return new Intl.NumberFormat('en-KE', { style: 'currency', currency: CURRENCY, maximumFractionDigits: 0 }).format(n);
+          } catch (e) {
+            return CURRENCY + ' ' + Math.round(n).toLocaleString();
+          }
+        }
+
+        function fmtDate(iso) {
+          var p = String(iso).split('-');
+          return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]))
+            .toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+
+        function dueBadge(days) {
+          if (days < 0) return '<span class="badge badge-unavailable">' + Math.abs(days) + 'd overdue</span>';
+          if (days === 0) return '<span class="badge badge-unavailable">Today</span>';
+          if (days <= 14) return '<span class="badge badge-under_maintenance">in ' + days + 'd</span>';
+          return '<span class="badge badge-inactive">in ' + days + 'd</span>';
+        }
+
+        function stat(label, value, note, accent) {
+          return '<div class="card stat stat-' + accent + '">' +
+            '<div class="stat-value">' + value + '</div>' +
+            '<div class="stat-label">' + label + '</div>' +
+            (note ? '<div class="stat-note">' + note + '</div>' : '') +
+            '</div>';
+        }
+
+        function setCount(id, n) { $(id).textContent = n; }
+
+        function showError(msg) {
+          var box = $('error');
+          box.textContent = msg;
           box.hidden = false;
+        }
+
+        function render(d) {
+          var v = d.vehicles;
+
+          $('stats-fleet').innerHTML =
+            stat('Total vehicles', v.total, v.inactive ? v.inactive + ' inactive' : '', 'blue') +
+            stat('Active', v.active, '', 'green') +
+            stat('Available now', v.available, d.trips.in_progress + ' on a trip', 'green') +
+            stat('Under maintenance', v.under_maintenance, v.unavailable ? v.unavailable + ' unavailable' : '', 'amber');
+
+          $('stats-month').innerHTML =
+            stat('Trips', d.trips.this_month, d.trips.total + ' all time', 'blue') +
+            stat('Fuel spend', money(d.fuel.this_month_cost), d.fuel.this_month_litres.toLocaleString() + ' litres', 'blue') +
+            stat('Maintenance spend', money(d.maintenance.this_month_cost), '', 'amber') +
+            stat('Pending faults', d.faults.pending, d.documents.expired ? d.documents.expired + ' expired document(s)' : '', d.faults.pending ? 'red' : 'green');
+
+          // Spending chart (bar heights in pixels)
+          var maxVal = 0;
+          d.monthly.forEach(function (m) { maxVal = Math.max(maxVal, m.fuel, m.maintenance); });
+          var maxH = 140;
+          if (!maxVal) {
+            $('chart').innerHTML = '<div class="empty" style="width:100%">No fuel or maintenance costs recorded yet.</div>';
+          } else {
+            $('chart').innerHTML = d.monthly.map(function (m) {
+              return '<div class="chart-col">' +
+                '<div class="bars">' +
+                '<div class="bar bar-fuel" style="height:' + Math.round((m.fuel / maxVal) * maxH) + 'px" title="Fuel: ' + esc(money(m.fuel)) + '"></div>' +
+                '<div class="bar bar-maint" style="height:' + Math.round((m.maintenance / maxVal) * maxH) + 'px" title="Maintenance: ' + esc(money(m.maintenance)) + '"></div>' +
+                '</div>' +
+                '<div class="chart-label">' + esc(m.label) + '</div>' +
+                '</div>';
+            }).join('');
+          }
+
+          // Pending faults
+          setCount('fault-count', d.faults.pending);
+          $('faults').innerHTML = d.faults.recent.length
+            ? d.faults.recent.map(function (f) {
+                var pending = f.status === 'pending_inspection';
+                return '<li>' +
+                  '<div class="fault-top"><strong>' + esc(f.registration_no) + '</strong>' +
+                  '<span class="badge ' + (pending ? 'badge-under_maintenance' : 'badge-inactive') + '">' + esc(f.status.replace(/_/g, ' ')) + '</span></div>' +
+                  '<div>' + esc(f.problem) + '</div>' +
+                  '<div class="fault-meta">' + (f.location ? esc(f.location) + ' · ' : '') + new Date(f.reported_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + '</div>' +
+                  '</li>';
+              }).join('')
+            : '<li class="empty">No pending faults ✓</li>';
+
+          // Documents
+          var docs = d.documents.upcoming;
+          setCount('doc-count', d.documents.expired + d.documents.expiring_soon);
+          $('docs').innerHTML = docs.length
+            ? '<table><thead><tr><th>Vehicle</th><th>Document</th><th>Expires</th><th></th></tr></thead><tbody>' +
+              docs.map(function (x) {
+                return '<tr><td><strong>' + esc(x.registration_no) + '</strong></td><td>' + esc(x.type) + '</td><td>' + fmtDate(x.expiry_date) + '</td><td>' + dueBadge(x.days_left) + '</td></tr>';
+              }).join('') + '</tbody></table>'
+            : '<div class="empty">Nothing expires in the next 30 days ✓</div>';
+
+          // Services
+          var svc = d.services.due;
+          setCount('svc-count', svc.length);
+          $('services').innerHTML = svc.length
+            ? '<table><thead><tr><th>Vehicle</th><th>Service</th><th>Due</th><th></th></tr></thead><tbody>' +
+              svc.map(function (x) {
+                return '<tr><td><strong>' + esc(x.registration_no) + '</strong></td><td>' + esc(x.service_type) + '</td><td>' + fmtDate(x.next_service_date) + '</td><td>' + dueBadge(x.days_left) + '</td></tr>';
+              }).join('') + '</tbody></table>'
+            : '<div class="empty">No services due in the next 30 days ✓</div>';
+        }
+
+        async function load() {
+          $('error').hidden = true;
+          var btn = $('refresh-btn');
+          btn.disabled = true;
+          btn.textContent = 'Loading…';
+          try {
+            render(await api('/reports/dashboard'));
+            $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+          } catch (err) {
+            showError(err.message);
+          } finally {
+            btn.disabled = false;
+            btn.textContent = 'Refresh';
+          }
+        }
+
+        $('subtitle').textContent = 'Hello, ' + user.name + ' · ' +
+          new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+        $('refresh-btn').addEventListener('click', load);
+
+        if (user.role === 'driver') {
+          $('dashboard').hidden = true;
+          $('no-access').hidden = false;
+          $('refresh-btn').hidden = true;
+        } else {
+          load();
         }
       })();
     </script>
